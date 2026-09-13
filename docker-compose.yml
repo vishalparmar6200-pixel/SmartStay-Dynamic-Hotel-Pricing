@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # Relational Database Service (PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    container_name: smartstay_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: smartstay_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Python FastAPI Backend (Rule-Based Pricing Engine & Analytics)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: smartstay_backend
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgrespassword@db:5432/smartstay_db
+      SECRET_KEY: smartstay-super-secret-key-change-in-production-hotel-revenue
+      ENV: production
+      DEBUG: "False"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+
+  # React / TypeScript SaaS Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../Dockerfile.frontend
+    container_name: smartstay_frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
+
+volumes:
+  postgres_data:
